@@ -1,0 +1,14 @@
+[
+  {
+    "clientId": "C001",
+    "preferredChannel": "SMS"
+  },
+  {
+    "clientId": "C002",
+    "preferredChannel": "EMAIL"
+  },
+  {
+    "clientId": "C003",
+    "preferredChannel": "PUSH"
+  }
+]

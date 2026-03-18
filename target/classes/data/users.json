@@ -1,0 +1,23 @@
+[
+  {
+    "clientId": "C001",
+    "name": "Ahmed Benali",
+    "phone": "+212600000001",
+    "email": "ahmed.benali@example.com",
+    "pushToken": "push-token-C001"
+  },
+  {
+    "clientId": "C002",
+    "name": "Fatima Zahra",
+    "phone": "+212600000002",
+    "email": "fatima.zahra@example.com",
+    "pushToken": "push-token-C002"
+  },
+  {
+    "clientId": "C003",
+    "name": "Youssef Idrissi",
+    "phone": "+212600000003",
+    "email": "youssef.idrissi@example.com",
+    "pushToken": "push-token-C003"
+  }
+]

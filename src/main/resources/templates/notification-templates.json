@@ -1,0 +1,14 @@
+[
+  {
+    "operationType": "VIREMENT",
+    "template": "Virement de {amount} {currency} vers {beneficiary} effectué avec succès."
+  },
+  {
+    "operationType": "PAIEMENT",
+    "template": "Paiement de {amount} {currency} chez {merchant} confirmé."
+  },
+  {
+    "operationType": "RETRAIT",
+    "template": "Retrait de {amount} {currency} effectué."
+  }
+]

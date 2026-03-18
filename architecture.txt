@@ -1,0 +1,92 @@
+Architecture finale du POC
+Client HTTP
+    │
+    ▼
+API /submit (Spring Boot REST)
+    │ Produit message brut
+    ▼
+[raw-notifications]  ← Kafka Topic
+    │
+    ▼
+Kafka Streams Processor (Spring Boot)
+    │ 1. Lookup user (users.json)
+    │ 2. Lookup préférences (preferences.json)
+    │ 3. Génère le contenu via template + operationType
+    │ 4. Route vers le bon topic selon le canal
+    │
+    ├──▶ [notifications-sms]
+    ├──▶ [notifications-email]
+    └──▶ [notifications-push]
+          │
+          ▼
+    Consumers (Spring Kafka Listeners)
+          │
+          ▼
+    sms_output.txt / email_output.txt / push_output.txt
+  Structure des messages
+  Input (API → raw-notifications) :
+
+ {
+   "clientId": "C001",
+   "operationType": "VIREMENT",
+   "metadata": {
+     "amount": 5000,
+     "currency": "MAD",
+     "beneficiary": "Ahmed"
+   }
+ }
+Pas de forme imposée. Le message reste brut et logique.
+Output (Kafka Streams → topics canal) :
+{
+  "clientId": "C001",
+  "channel": "SMS",
+  "recipient": "+212600000000",
+  "content": "Virement de 5000 MAD vers Ahmed effectué avec succès.",
+  "timestamp": "2026-03-17T10:00:00Z"
+}
+```
+
+Le contenu est généré dans Kafka Streams via un template lié à l'operationType. Le consumer reçoit un message prêt à écrire.
+
+## Les templates (dans Kafka Streams)
+
+Un Map simple en mémoire :
+```
+VIREMENT → "Virement de {amount} {currency} vers {beneficiary} effectué avec succès."
+PAIEMENT → "Paiement de {amount} {currency} chez {merchant} confirmé."
+RETRAIT  → "Retrait de {amount} {currency} effectué."
+```
+
+Kafka Streams remplace les placeholders avec les valeurs de metadata.
+
+## Structure du projet Spring Boot
+```
+notification-poc/
+├── src/main/java/com/bcp/notification/
+│   ├── api/
+│   │   └── NotificationController.java      ← POST /submit
+│   ├── producer/
+│   │   └── RawNotificationProducer.java      ← envoie vers raw-notifications
+│   ├── stream/
+│   │   ├── NotificationStreamProcessor.java  ← Kafka Streams topology
+│   │   ├── UserLookupService.java            ← charge users.json
+│   │   ├── PreferenceLookupService.java      ← charge preferences.json
+│   │   └── TemplateEngine.java               ← génère le contenu
+│   ├── consumer/
+│   │   ├── SmsConsumer.java                  ← écrit sms_output.txt
+│   │   ├── EmailConsumer.java                ← écrit email_output.txt
+│   │   └── PushConsumer.java                 ← écrit push_output.txt
+│   └── model/
+│       ├── RawNotification.java
+│       └── RoutedNotification.java
+├── src/main/resources/
+│   ├── application.yml
+│   ├── data/
+│   │   ├── users.json
+│   │   └── preferences.json
+│   └── templates/
+│       └── notification-templates.json
+├── docker-compose.yml                        ← Kafka + Zookeeper
+└── pom.xml
+Docker Compose (infra POC)
+Kafka + Zookeeper. L'app Spring Boot tourne en local. Pas besoin de conteneuriser l'app pour un POC.

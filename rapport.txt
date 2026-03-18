@@ -1,0 +1,315 @@
+
+================================================================================
+                           RAPPORT TECHNIQUE
+              POC — Système de Notification Bancaire par Canal
+                     Technologie : Spring Boot + Kafka Streams
+                            Date : 17 Mars 2026
+================================================================================
+
+
+1. CONTEXTE ET OBJECTIF
+────────────────────────────────────────────────────────────────────────────────
+
+  Ce POC (Proof of Concept) a pour objectif de démontrer la faisabilité d'un
+  système de notification bancaire basé sur une architecture événementielle
+  utilisant Apache Kafka et Kafka Streams.
+
+  Le système doit être capable de :
+
+    - Recevoir un événement bancaire brut (virement, paiement, retrait)
+    - Enrichir cet événement avec les données client et ses préférences
+    - Générer automatiquement le contenu du message selon un template
+    - Router la notification vers le bon canal (SMS, Email ou Push)
+    - Délivrer la notification au destinataire approprié
+
+  Ce POC simule la délivrance en écrivant les notifications dans des fichiers
+  texte (sms_output.txt, email_output.txt, push_output.txt) plutôt que
+  d'appeler de vraies APIs d'envoi.
+
+
+2. ARCHITECTURE TECHNIQUE
+────────────────────────────────────────────────────────────────────────────────
+
+  2.1 Vue d'ensemble
+  ──────────────────
+
+    Client HTTP
+        │
+        │  POST /submit  (JSON brut)
+        ▼
+    Spring Boot REST API  (port 8081)
+        │
+        │  Produit sur Kafka
+        ▼
+    Topic : raw-notifications
+        │
+        │  Consommé par
+        ▼
+    Kafka Streams Processor
+        │  ├── Lookup utilisateur    (users.json)
+        │  ├── Lookup préférences    (preferences.json)
+        │  ├── Génération template   (notification-templates.json)
+        │  └── Routage par canal
+        │
+        ├──▶ Topic : notifications-sms
+        ├──▶ Topic : notifications-email
+        └──▶ Topic : notifications-push
+                  │
+                  ▼
+            Spring Kafka Consumers
+                  │
+                  ▼
+            sms_output.txt / email_output.txt / push_output.txt
+
+
+  2.2 Composants
+  ──────────────
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ Composant                  │ Rôle                                   │
+    ├─────────────────────────────────────────────────────────────────────┤
+    │ NotificationController     │ Endpoint REST POST /submit             │
+    │ RawNotificationProducer    │ Publie sur raw-notifications           │
+    │ NotificationStreamProcessor│ Topologie Kafka Streams (enrichissement│
+    │                            │ + routage)                             │
+    │ UserLookupService          │ Charge et expose users.json            │
+    │ PreferenceLookupService    │ Charge et expose preferences.json      │
+    │ TemplateEngine             │ Génère le contenu via templates.json   │
+    │ SmsConsumer                │ Consomme notifications-sms             │
+    │ EmailConsumer              │ Consomme notifications-email           │
+    │ PushConsumer               │ Consomme notifications-push            │
+    │ KafkaTopicConfig           │ Crée les 4 topics au démarrage         │
+    │ KafkaStreamsConfig          │ Gère les exceptions Kafka Streams      │
+    └─────────────────────────────────────────────────────────────────────┘
+
+
+  2.3 Stack technique
+  ───────────────────
+
+    - Langage          : Java 17
+    - Framework        : Spring Boot 3.2.5
+    - Messaging        : Apache Kafka 3.6.2 (Confluent 7.6.0)
+    - Stream Processing: Kafka Streams 3.6.2
+    - Sérialisation    : Jackson (JSON)
+    - Infrastructure   : Docker / Docker Compose
+    - Build            : Maven
+
+
+3. STRUCTURE DES MESSAGES
+────────────────────────────────────────────────────────────────────────────────
+
+  3.1 Message d'entrée (API → raw-notifications)
+  ────────────────────────────────────────────────
+
+    {
+      "clientId"      : "C001",
+      "operationType" : "VIREMENT",
+      "metadata" : {
+        "amount"      : 5000,
+        "currency"    : "MAD",
+        "beneficiary" : "Ahmed"
+      }
+    }
+
+  3.2 Message de sortie (Kafka Streams → topics canaux)
+  ──────────────────────────────────────────────────────
+
+    {
+      "clientId"  : "C001",
+      "channel"   : "SMS",
+      "recipient" : "+212600000001",
+      "content"   : "Virement de 5000 MAD vers Ahmed effectué avec succès.",
+      "timestamp" : "2026-03-17T18:36:34Z"
+    }
+
+
+4. DONNÉES DE RÉFÉRENCE
+────────────────────────────────────────────────────────────────────────────────
+
+  4.1 Clients (users.json)
+  ─────────────────────────
+
+    ┌──────────┬───────────────────┬───────────────────────────────┬────────────────────┐
+    │ clientId │ name              │ phone                         │ email              │
+    ├──────────┼───────────────────┼───────────────────────────────┼────────────────────┤
+    │ C001     │ Ahmed Benali      │ +212600000001                 │ ahmed@example.com  │
+    │ C002     │ Fatima Zahra      │ +212600000002                 │ fatima@example.com │
+    │ C003     │ Youssef Idrissi   │ +212600000003                 │ youssef@example.com│
+    └──────────┴───────────────────┴───────────────────────────────┴────────────────────┘
+
+  4.2 Préférences canal (preferences.json)
+  ─────────────────────────────────────────
+
+    ┌──────────┬──────────────────┐
+    │ clientId │ preferredChannel │
+    ├──────────┼──────────────────┤
+    │ C001     │ SMS              │
+    │ C002     │ EMAIL            │
+    │ C003     │ PUSH             │
+    └──────────┴──────────────────┘
+
+  4.3 Templates de notification (notification-templates.json)
+  ────────────────────────────────────────────────────────────
+
+    ┌───────────────┬────────────────────────────────────────────────────────┐
+    │ operationType │ template                                               │
+    ├───────────────┼────────────────────────────────────────────────────────┤
+    │ VIREMENT      │ Virement de {amount} {currency} vers {beneficiary}     │
+    │               │ effectué avec succès.                                  │
+    ├───────────────┼────────────────────────────────────────────────────────┤
+    │ PAIEMENT      │ Paiement de {amount} {currency} chez {merchant}        │
+    │               │ confirmé.                                              │
+    ├───────────────┼────────────────────────────────────────────────────────┤
+    │ RETRAIT       │ Retrait de {amount} {currency} effectué.               │
+    └───────────────┴────────────────────────────────────────────────────────┘
+
+
+5. TOPOLOGIE KAFKA STREAMS
+────────────────────────────────────────────────────────────────────────────────
+
+  La topologie Kafka Streams est composée des étapes suivantes :
+
+    Étape 1 — SOURCE
+      builder.stream("raw-notifications", Consumed.with(String, String))
+      → Lecture des messages bruts en format String/JSON
+
+    Étape 2 — MAP VALUES
+      rawStream.mapValues(rawJson -> {
+          1. Désérialisation JSON → RawNotification
+          2. Lookup utilisateur   → UserLookupService.findById()
+          3. Lookup canal         → PreferenceLookupService.getPreferredChannel()
+          4. Génération contenu   → TemplateEngine.generate()
+          5. Construction         → new RoutedNotification(...)
+          6. Sérialisation JSON   → objectMapper.writeValueAsString()
+      })
+
+    Étape 3 — FILTER + SINK (x3)
+      validStream.filter(channel == "SMS")   .to("notifications-sms")
+      validStream.filter(channel == "EMAIL") .to("notifications-email")
+      validStream.filter(channel == "PUSH")  .to("notifications-push")
+
+
+6. INFRASTRUCTURE KAFKA
+────────────────────────────────────────────────────────────────────────────────
+
+  Déployée via Docker Compose :
+
+    ┌─────────────────┬──────────────────────────────────────────────────────┐
+    │ Conteneur       │ Rôle                                                 │
+    ├─────────────────┼──────────────────────────────────────────────────────┤
+    │ notif-zookeeper │ Coordination Kafka (port 2181)                       │
+    │ notif-kafka     │ Broker Kafka (port 9092 exposé sur hôte)             │
+    │ notif-kafka-init│ Initialisation des 4 topics au démarrage             │
+    └─────────────────┴──────────────────────────────────────────────────────┘
+
+  Topics créés :
+    - raw-notifications      (partitions: 1, replication: 1)
+    - notifications-sms      (partitions: 1, replication: 1)
+    - notifications-email    (partitions: 1, replication: 1)
+    - notifications-push     (partitions: 1, replication: 1)
+
+
+7. TESTS RÉALISÉS
+────────────────────────────────────────────────────────────────────────────────
+
+  7.1 Cas de test exécutés
+  ─────────────────────────
+
+    ┌──────┬──────────┬───────────────┬─────────┬──────────────────────────────┐
+    │ Test │ clientId │ operationType │  Canal  │ Résultat                     │
+    ├──────┼──────────┼───────────────┼─────────┼──────────────────────────────┤
+    │  1   │ C001     │ VIREMENT      │ SMS     │ ✓ sms_output.txt rempli      │
+    │  2   │ C002     │ PAIEMENT      │ EMAIL   │ ✓ email_output.txt rempli    │
+    │  3   │ C003     │ RETRAIT       │ PUSH    │ ✓ push_output.txt rempli     │
+    └──────┴──────────┴───────────────┴─────────┴──────────────────────────────┘
+
+  7.2 Exemple de sortie validée (Test 1)
+  ──────────────────────────────────────
+
+    Requête :
+      POST http://localhost:8081/submit
+      {
+        "clientId": "C001",
+        "operationType": "VIREMENT",
+        "metadata": { "amount": 5000, "currency": "MAD", "beneficiary": "Ahmed" }
+      }
+
+    Logs Spring Boot :
+      [Producer]    Envoyé sur raw-notifications : {"clientId":"C001",...}
+      [Stream]      Client=C001 | Canal=SMS | Contenu=Virement de 5000 MAD...
+      [SmsConsumer] Reçu : {"clientId":"C001","channel":"SMS",...}
+
+    Contenu sms_output.txt :
+      {
+        "clientId"  : "C001",
+        "channel"   : "SMS",
+        "recipient" : "+212600000001",
+        "content"   : "Virement de 5000 MAD vers Ahmed effectué avec succès.",
+        "timestamp" : "2026-03-17T18:36:34.551998600Z"
+      }
+
+
+8. PROBLÈMES RENCONTRÉS ET SOLUTIONS
+────────────────────────────────────────────────────────────────────────────────
+
+  ┌───┬──────────────────────────────────┬───────────────────────────────────┐
+  │ # │ Problème                         │ Solution                          │
+  ├───┼──────────────────────────────────┼───────────────────────────────────┤
+  │ 1 │ Réseau Docker : Kafka ne résout  │ Suppression du réseau custom,     │
+  │   │ pas "zookeeper:2181"             │ utilisation des container_name    │
+  │   │                                  │ comme hostname                    │
+  ├───┼──────────────────────────────────┼───────────────────────────────────┤
+  │ 2 │ MissingSourceTopicException :    │ Création des topics via           │
+  │   │ Kafka Streams crashe car         │ KafkaTopicConfig (@Bean NewTopic) │
+  │   │ raw-notifications inexistant     │ + KafkaStreamsConfig (REPLACE_THREAD│
+  │   │                                  │ au lieu de SHUTDOWN_CLIENT)       │
+  ├───┼──────────────────────────────────┼───────────────────────────────────┤
+  │ 3 │ Double sérialisation JSON :      │ Changement du value-serializer    │
+  │   │ JsonSerializer re-encode le      │ producer vers StringSerializer    │
+  │   │ String déjà sérialisé            │                                   │
+  ├───┼──────────────────────────────────┼───────────────────────────────────┤
+  │ 4 │ SerializationException côté      │ Changement du value-deserializer  │
+  │   │ consumers : JsonDeserializer     │ consumer vers StringDeserializer  │
+  │   │ attend un objet, reçoit String   │                                   │
+  ├───┼──────────────────────────────────┼───────────────────────────────────┤
+  │ 5 │ Serde custom Kafka Streams :     │ Remplacement par String Serde +   │
+  │   │ JsonDeserializer Spring Kafka    │ désérialisation manuelle via       │
+  │   │ mal configuré dans topology      │ ObjectMapper dans mapValues()     │
+  └───┴──────────────────────────────────┴───────────────────────────────────┘
+
+
+9. LIMITATIONS DU POC
+────────────────────────────────────────────────────────────────────────────────
+
+  - Les données clients et préférences sont chargées en mémoire depuis des
+    fichiers JSON statiques. En production, elles viendraient d'une base de
+    données (ex: Oracle, PostgreSQL).
+
+  - La délivrance des notifications est simulée par écriture dans des fichiers
+    texte. En production, les consumers appelleraient des APIs réelles :
+      * SMS   → API opérateur (Twilio, Orange SMS, etc.)
+      * Email → SMTP / SendGrid / Resend
+      * Push  → Firebase Cloud Messaging (FCM) / APNs
+
+  - Pas de gestion des erreurs de délivrance (retry, DLQ).
+  - Pas d'authentification sur l'endpoint /submit.
+  - Kafka déployé en single-broker (replication-factor = 1).
+  - Pas de monitoring / alerting.
+
+
+10. PERSPECTIVES D'ÉVOLUTION
+────────────────────────────────────────────────────────────────────────────────
+
+  - Connexion à une base de données pour les référentiels clients
+  - Intégration des vraies APIs de délivrance (SMS, Email, Push)
+  - Gestion des DLQ (Dead Letter Queue) pour les messages en erreur
+  - Ajout d'un topic d'audit pour traçabilité de toutes les notifications
+  - Sécurisation de l'API (JWT / OAuth2)
+  - Déploiement multi-broker Kafka (haute disponibilité)
+  - Tableau de bord de monitoring (Kafka UI, Prometheus, Grafana)
+  - Tests d'intégration avec Kafka embarqué (EmbeddedKafkaBroker)
+
+
+================================================================================
+                              FIN DU RAPPORT
+================================================================================
