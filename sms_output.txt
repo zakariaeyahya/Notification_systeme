@@ -1,0 +1,1 @@
+{"clientId":"C001","channel":"SMS","recipient":"+212600000001","content":"Virement de 5000 MAD vers Ahmed effectué avec succès.","timestamp":"2026-03-18T10:24:57.502657400Z"}

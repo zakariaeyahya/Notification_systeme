@@ -1,0 +1,1 @@
+{"clientId":"C002","channel":"EMAIL","recipient":"fatima.zahra@example.com","content":"Paiement de 1200 MAD chez Marjane confirmé.","timestamp":"2026-03-18T10:24:58.558631Z"}

@@ -1,0 +1,1 @@
+{"clientId":"C003","channel":"PUSH","recipient":"push-token-C003","content":"Retrait de 500 MAD effectué.","timestamp":"2026-03-18T10:24:59.650814Z"}
